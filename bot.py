@@ -96,35 +96,27 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
 
-    # Écho immédiat (debug)
+    # Écho debug
     await update.message.reply_text(f"✅ Reçu : {text}")
 
-    # Anti-spam léger
+    # Anti-spam global (compatible Railway)
     now = time.time()
-    last = getattr(context.application, "last", {})
-    if uid in last and (now - last[uid]) < 0.6:
+    if uid in LAST_SEEN and (now - LAST_SEEN[uid]) < 0.6:
         return
-    last[uid] = now
-    context.application.last = last
+    LAST_SEEN[uid] = now
 
-    # Mémorisation utilisateur
+    # Mémorisation
     _push(uid, "user", text)
 
     try:
-        # L’IA réfléchit
         await update.message.chat.send_action(action="typing")
-
-        # Appel IA
         reply = await chat(_hist(uid))
-
-        # Mémorisation assistant
         _push(uid, "assistant", reply)
-
-        # Réponse IA (texte brut)
         await update.message.reply_text(reply)
 
     except Exception:
         await update.message.reply_text("⚠️ Petit problème côté IA. Réessaie.")
+
 
 
 
