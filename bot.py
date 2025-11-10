@@ -96,7 +96,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
 
-    # Petit anti-spam
+    # Réponse immédiate (écho) pour prouver que le handler reçoit bien le message
+    await update.message.reply_text(f"✅ Reçu : {text}")
+
+    # Anti-spam léger
     now = time.time()
     last = getattr(context.application, "last", {})
     if uid in last and (now - last[uid]) < 0.7:
@@ -104,24 +107,21 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last[uid] = now
     context.application.last = last
 
-    # Enregistre le message utilisateur
+    # Mémorisation
     _push(uid, "user", text)
 
     try:
-        # Telegram affiche "... écrit"
-        await update.message.chat.send_action(action="typing")
-
         # Appel IA
         reply = await chat(_hist(uid))
-
-        # Enregistre réponse dans mémoire
         _push(uid, "assistant", reply)
 
-        # Envoi sans formatage (le plus sûr)
+        # Envoi sans formatage (aucun parse_mode)
         await update.message.reply_text(reply)
 
     except Exception:
-        await update.message.reply_text("Petit pépin côté IA. Réessaie.")
+        # Message simple si l’IA a un souci
+        await update.message.reply_text("⚠️ Petit pépin côté IA. Réessaie.")
+
 
 
 def main():
@@ -146,7 +146,7 @@ def main():
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("ping",  ping))
     app.add_handler(CommandHandler("diag",  diag))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, on_text))
 
     logging.info("Bot en ligne (long-polling).")
     app.run_polling()
