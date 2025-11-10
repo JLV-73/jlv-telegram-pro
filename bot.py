@@ -104,7 +104,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(action="typing")
     reply = await chat(_hist(uid))
     _push(uid, "assistant", reply)
-    await update.message.reply_text(reply, parse_mode=ParseMode.MARKDOWN)
+    logging.info("Reply len=%s preview=%r", len(reply), reply[:120])
+    await update.message.reply_text(reply)
 
 def main():
     # Requête HTTP custom pour forcer HTTP/1.1 (robuste partout)
