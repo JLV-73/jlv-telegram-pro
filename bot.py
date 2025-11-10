@@ -108,7 +108,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     # Requête HTTP custom pour forcer HTTP/1.1 (robuste partout)
-    req = HTTPXRequest(http_version="1.1", http2=False, connect_timeout=15.0, read_timeout=60.0)
+    req = HTTPXRequest(
+        http_version="1.1",
+        connect_timeout=15.0,
+        read_timeout=60.0
+)
+
 
     app = (
         ApplicationBuilder()
