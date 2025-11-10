@@ -83,6 +83,13 @@ fng = httpx.AsyncClient(
     timeout=httpx.Timeout(30, connect=10),
 )
 
+# News (CryptoCompare) — pas de clé requise
+ccnews = httpx.AsyncClient(
+    base_url="https://min-api.cryptocompare.com",
+    timeout=httpx.Timeout(30, connect=10),
+)
+
+
 # =========================
 # Utilitaires format
 # =========================
@@ -237,49 +244,57 @@ async def cmd_btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ BTC: échec récupération ({e}).")
 
 async def cmd_actu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Actu BTC & ETH (via endpoint global /status_updates) + synthèse IA"""
+    """
+    Actu BTC & ETH via CryptoCompare News (source publique).
+    On récupère un flux EN, on filtre BTC/ETH et on synthétise en français via l’IA.
+    """
     try:
-        # On récupère les 50 derniers updates globaux
-        r = await cg.get("/status_updates", params={"per_page": 50, "page": 1})
+        # Récup top news (EN). On filtre ensuite BTC/ETH dans categories/coins.
+        r = await ccnews.get("/data/v2/news/", params={"lang": "EN"})
         r.raise_for_status()
-        items = r.json().get("status_updates", []) or []
+        articles = r.json().get("Data", [])[:50]  # on limite
 
-        def pick(coin_id: str, symbol: str):
-            out = []
-            for it in items:
-                proj = it.get("project") or {}
-                pid  = (proj.get("id") or "").lower()
-                sym  = (proj.get("symbol") or "").lower()
-                if pid == coin_id or sym == symbol:
-                    desc = (it.get("description") or "").strip()
-                    name = proj.get("name") or coin_id.upper()
-                    if desc:
-                        out.append(f"- {name}: {desc[:240]}")
-                    if len(out) >= 6:
-                        break
-            return out
+        btc_items, eth_items = [], []
+        for a in articles:
+            cats = (a.get("categories") or "") + " " + " ".join(a.get("tags") or [])
+            title = (a.get("title") or "").strip()
+            body  = (a.get("body") or "").strip()
+            url   = (a.get("url") or "").strip()
+            line  = f"- {title} — {url}\n  {body[:220]}..."
 
-        news_btc = pick("bitcoin", "btc")
-        news_eth = pick("ethereum", "eth")
+            # tri très simple : présence de mots-clés
+            cats_low = (cats + " " + title + " " + body).lower()
+            if any(k in cats_low for k in ["btc", "bitcoin"]):
+                btc_items.append(line)
+            if any(k in cats_low for k in ["eth", "ethereum"]):
+                eth_items.append(line)
 
-        raw = []
-        raw.append("BTC:\n" + ("\n".join(news_btc) if news_btc else "- (rien de marquant)"))
-        raw.append("\nETH:\n" + ("\n".join(news_eth) if news_eth else "- (rien de marquant)"))
-        raw_txt = "\n".join(raw)
+        # On prend les 5 meilleurs de chaque
+        btc_text = "\n".join(btc_items[:5]) if btc_items else "- (rien de marquant)"
+        eth_text = "\n".join(eth_items[:5]) if eth_items else "- (rien de marquant)"
+
+        raw = f"BTC news:\n{btc_text}\n\nETH news:\n{eth_text}"
 
         prompt = (
-            "Synthétise ces mises à jour officielles en puces courtes et actionnables : "
-            "impact prix/réseau/régulation, niveau de confiance, et ce qui est du bruit. "
-            "Sépare BTC et ETH, maximum 6 puces par actif.\n\n" + raw_txt
+            "Synthétise ces actualités en français, en séparant BTC et ETH. "
+            "Pour chaque actif, donne 4–6 puces actionnables : impact potentiel "
+            "sur le prix/réseau/régulation, niveau de confiance, ce qui est du bruit. "
+            "Reste concis et utile pour un trader."
         )
+
         uid = update.effective_user.id
-        _push(uid, "user", prompt)
+        _push(uid, "user", raw + "\n\n" + prompt)
         ia = await chat(_hist(uid))
 
         await update.message.reply_text("🗞️ **Actu BTC & ETH**\n" + ia)
 
+    except httpx.HTTPStatusError as e:
+        await update.message.reply_text(
+            f"⚠️ Actu: échec récupération (HTTP {e.response.status_code})."
+        )
     except Exception as e:
         await update.message.reply_text(f"⚠️ Actu: échec récupération ({e}).")
+
 
 
 async def cmd_macro(update: Update, context: ContextTypes.DEFAULT_TYPE):
