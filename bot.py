@@ -90,22 +90,39 @@ async def diag(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Diag error: {e}")
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return
+    if not update.message or not update.message.text:
+        return
+
     uid = update.effective_user.id
     text = update.message.text.strip()
 
-    # anti-spam court
+    # Petit anti-spam
     now = time.time()
     last = getattr(context.application, "last", {})
-    if uid in last and (now - last[uid]) < 0.7: return
-    last[uid] = now; context.application.last = last
+    if uid in last and (now - last[uid]) < 0.7:
+        return
+    last[uid] = now
+    context.application.last = last
 
+    # Enregistre le message utilisateur
     _push(uid, "user", text)
-    await update.message.chat.send_action(action="typing")
-    reply = await chat(_hist(uid))
-    _push(uid, "assistant", reply)
-    logging.info("Reply len=%s preview=%r", len(reply), reply[:120])
-    await update.message.reply_text(reply)
+
+    try:
+        # Telegram affiche "... écrit"
+        await update.message.chat.send_action(action="typing")
+
+        # Appel IA
+        reply = await chat(_hist(uid))
+
+        # Enregistre réponse dans mémoire
+        _push(uid, "assistant", reply)
+
+        # Envoi sans formatage (le plus sûr)
+        await update.message.reply_text(reply)
+
+    except Exception:
+        await update.message.reply_text("Petit pépin côté IA. Réessaie.")
+
 
 def main():
     # Requête HTTP custom pour forcer HTTP/1.1 (robuste partout)
