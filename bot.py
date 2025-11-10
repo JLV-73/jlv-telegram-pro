@@ -237,27 +237,50 @@ async def cmd_btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ BTC: échec récupération ({e}).")
 
 async def cmd_actu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Actu BTC & ETH (status_updates CoinGecko) + synthèse IA"""
+    """Actu BTC & ETH (via endpoint global /status_updates) + synthèse IA"""
     try:
-        news = []
-        for cid in ["bitcoin", "ethereum"]:
-            rr = await cg.get(f"/coins/{cid}/status_updates", params={"per_page": 5, "page": 1})
-            rr.raise_for_status()
-            items = rr.json().get("status_updates", [])[:5]
-            brief = [f"- {it.get('project',{}).get('name','')}: {it.get('description','')}" for it in items]
-            news.append((cid.upper(), "\n".join(brief) or "- (rien de marquant)"))
+        # On récupère les 50 derniers updates globaux
+        r = await cg.get("/status_updates", params={"per_page": 50, "page": 1})
+        r.raise_for_status()
+        items = r.json().get("status_updates", []) or []
 
-        raw = "\n\n".join([f"{cid}:\n{txt}" for cid, txt in news])
+        def pick(coin_id: str, symbol: str):
+            out = []
+            for it in items:
+                proj = it.get("project") or {}
+                pid  = (proj.get("id") or "").lower()
+                sym  = (proj.get("symbol") or "").lower()
+                if pid == coin_id or sym == symbol:
+                    desc = (it.get("description") or "").strip()
+                    name = proj.get("name") or coin_id.upper()
+                    if desc:
+                        out.append(f"- {name}: {desc[:240]}")
+                    if len(out) >= 6:
+                        break
+            return out
+
+        news_btc = pick("bitcoin", "btc")
+        news_eth = pick("ethereum", "eth")
+
+        raw = []
+        raw.append("BTC:\n" + ("\n".join(news_btc) if news_btc else "- (rien de marquant)"))
+        raw.append("\nETH:\n" + ("\n".join(news_eth) if news_eth else "- (rien de marquant)"))
+        raw_txt = "\n".join(raw)
+
         prompt = (
-            "Synthétise ces mises à jour officielles en 6 puces max par actif, "
-            "sépare le signal du bruit (prix, réseau, régulation), sans marketing."
+            "Synthétise ces mises à jour officielles en puces courtes et actionnables : "
+            "impact prix/réseau/régulation, niveau de confiance, et ce qui est du bruit. "
+            "Sépare BTC et ETH, maximum 6 puces par actif.\n\n" + raw_txt
         )
         uid = update.effective_user.id
-        _push(uid, "user", raw + "\n\n" + prompt)
+        _push(uid, "user", prompt)
         ia = await chat(_hist(uid))
+
         await update.message.reply_text("🗞️ **Actu BTC & ETH**\n" + ia)
+
     except Exception as e:
         await update.message.reply_text(f"⚠️ Actu: échec récupération ({e}).")
+
 
 async def cmd_macro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Brief macro (Fear & Greed + IA)"""
